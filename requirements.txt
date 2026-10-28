@@ -1,0 +1,8 @@
+feedparser
+requests
+numpy
+scipy
+Pillow
+google-api-python-client
+google-auth
+piper-tts==1.2.0
