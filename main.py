@@ -1,8 +1,10 @@
 import os, sys, json
-import brain, studio
+import brain, studio, rig
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
+
+rig.install()  # human-like rigged characters + JPG files into out/
 
 
 def load_used():
@@ -17,18 +19,21 @@ def save_used(u):
 
 
 def youtube():
-    c = Credentials(None, refresh_token=os.environ["YT_REFRESH_TOKEN"], token_uri="https://oauth2.googleapis.com/token",
-                    client_id=os.environ["YT_CLIENT_ID"], client_secret=os.environ["YT_CLIENT_SECRET"])
+    c = Credentials(None, refresh_token=os.environ["YT_REFRESH_TOKEN"],
+                    token_uri="https://oauth2.googleapis.com/token",
+                    client_id=os.environ["YT_CLIENT_ID"],
+                    client_secret=os.environ["YT_CLIENT_SECRET"])
     return build("youtube", "v3", credentials=c)
 
 
 def upload(path, title, desc, tags, thumb=None):
     y = youtube()
-    body = {"snippet": {"title": title[:100], "description": desc[:4900], "tags": tags, "categoryId": "25",
-                        "defaultLanguage": "en", "defaultAudioLanguage": "en"},
+    body = {"snippet": {"title": title[:100], "description": desc[:4900], "tags": tags,
+                        "categoryId": "25", "defaultLanguage": "en", "defaultAudioLanguage": "en"},
             "status": {"privacyStatus": "public", "selfDeclaredMadeForKids": False}}
     req = y.videos().insert(part="snippet,status", body=body,
-                            media_body=MediaFileUpload(path, chunksize=16 * 1024 * 1024, resumable=True, mimetype="video/mp4"))
+                            media_body=MediaFileUpload(path, chunksize=16 * 1024 * 1024,
+                                                       resumable=True, mimetype="video/mp4"))
     resp = None
     while resp is None:
         st, resp = req.next_chunk()
@@ -65,11 +70,12 @@ def main(kind):
         studio.produce(lines, srcs, topic, 1080, 1920, 15, "out/short.mp4", max_sec=58)
         title, desc, tags = brain.seo(topic, short=True)
         upload("out/short.mp4", title, desc, tags + ["shorts"])
-    else:  # friday: text + image post
+    else:  # friday: text + image post (saved as artifact)
         text = brain.friday_text(topic)
         open("out/friday_post.txt", "w").write(text)
         studio.thumbnail(topic, "out/friday_post.jpg")
         print(text)
+
     used.append(h)
     save_used(used)
 
