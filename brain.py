@@ -55,6 +55,7 @@ def llm(prompt, system=SYS, tokens=2200, temp=0.8):
             t = r.json().get("response", "").strip()
             if t:
                 return t
+            print("llm empty response:", str(r.text)[:200])
         except Exception as e:
             print("llm error:", e)
             time.sleep(5)
@@ -121,7 +122,8 @@ def facts_text(group):
     return "\n".join(f"[S{i+1}] {a['title']} — {a['summary']}" for i, a in enumerate(group))
 
 
-LINE = re.compile(r"^\W*(BULL|CRASH|GOLDIE|CASH)\W*[:：]\s*(.+)$", re.I)
+# tolerant: "1. CASH:", "**GOLDIE**:", "BULL (benefit):", "CRASH - text"
+LINE = re.compile(r"^[\W\d_]*(BULL|CRASH|GOLDIE|CASH)\b(?:\s*\([^)]*\))?[\W_]*?[:：\-–—]\s*(.+)$", re.I)
 
 
 def parse(text, allowed):
@@ -224,7 +226,10 @@ def write_script(topic, group, target_min=112, max_sections=26):
     def section(title, w):
         tail = "\n".join(f"{l['who']}: {l['text']}" for l in lines[-3:])
         txt = llm(section_prompt(topic, facts, title, k, covered, tail, w), tokens=2400)
-        return parse(txt, {"BULL", "CRASH", "GOLDIE"})
+        got = parse(txt, {"BULL", "CRASH", "GOLDIE"})
+        if not got:
+            print("section parse failed, raw output:", txt[:300].replace("\n", " | "))
+        return got
 
     while words < target and k < max_sections and fails < 4:
         title = titles[k] if k < len(titles) else f"Audience questions and sharper rebuttals, round {k - len(titles) + 1}"
@@ -250,16 +255,38 @@ def write_script(topic, group, target_min=112, max_sections=26):
 
 def write_short(topic, group):
     facts = facts_text(group[:3])
-    t = llm(f"""Write a 50-second finance debate for a YouTube Short. Topic: {topic}
+    prompt = f"""Write a 50-second finance debate for a YouTube Short. Topic: {topic}
 Facts:
 {facts}
-Output exactly 8 lines, each starting with a name and colon, in this order: CASH (one sentence: today's topic), GOLDIE (sharp question),
-BULL (benefit, 2 sentences), CRASH (risk, 2 sentences), BULL (rebuttal, 1 sentence), CRASH (rebuttal, 1 sentence),
-GOLDIE (neutral verdict), GOLDIE (asks viewers which side they are on). Plain spoken English, under 22 words per line.""", tokens=600)
-    ls = parse(t, {"CASH", "GOLDIE", "BULL", "CRASH"})
-    if len(ls) < 5:
-        raise RuntimeError("short script failed")
-    return ls[:9]
+Output exactly 8 lines, each starting with a name and colon, in this order:
+CASH: (one sentence: today's topic)
+GOLDIE: (sharp question)
+BULL: (benefit, 2 sentences)
+CRASH: (risk, 2 sentences)
+BULL: (rebuttal, 1 sentence)
+CRASH: (rebuttal, 1 sentence)
+GOLDIE: (neutral verdict)
+GOLDIE: (asks viewers which side they are on)
+Plain spoken English, under 22 words per line. Do not number the lines."""
+    for _ in range(3):
+        t = llm(prompt, tokens=600)
+        ls = parse(t, {"CASH", "GOLDIE", "BULL", "CRASH"})
+        if len(ls) >= 5:
+            return ls[:9]
+        print("short parse failed, raw output:", t[:300].replace("\n", " | "))
+    a = group[0]
+    first = re.split(r"(?<=[.!?])\s+", (a.get("summary") or a["title"]))[0][:170]
+    print("using built-in short fallback script")
+    return [
+        {"who": "CASH", "text": f"Today's topic: {topic}."},
+        {"who": "GOLDIE", "text": "Bull, Crash, what does this mean for regular investors?"},
+        {"who": "BULL", "text": f"{first} [S1] The upside is that smart investors can adapt and find new opportunities."},
+        {"who": "CRASH", "text": "But the risks are real. Uncertainty can hit prices fast, so protect your money before chasing gains."},
+        {"who": "BULL", "text": "Risk exists everywhere, and patient investors are usually rewarded over time."},
+        {"who": "CRASH", "text": "Patience does not help if you ignore the downside."},
+        {"who": "GOLDIE", "text": "Both sides have a point. Do your own research and manage your risk."},
+        {"who": "GOLDIE", "text": "Which side are you on? Tell us in the comments."},
+    ]
 
 
 def clean(t, names):
@@ -281,7 +308,7 @@ def seo(topic, short=False):
                f"Two hook sentences with keywords first, then what viewers will learn as short sentences. Characters: "
                f"Bull (benefits), Crash (risks), Goldie (neutral), Cash (host). NO links, NO mention of where information "
                f"came from, NO news outlet names.", tokens=500)
-    desc = clean(desc, names)
+    desc = clean(desc, names) or f"A deep Bull vs Crash debate on {topic}. Bull shows the benefits, Crash shows the risks, Goldie keeps it neutral."
     desc += "\n\nEducational content only. Not financial advice.\n\n#finance #investing #stockmarket #bullvscrash"
     if short:
         title = title[:80] + " #Shorts"
@@ -300,4 +327,4 @@ def seo(topic, short=False):
 def friday_text(topic):
     t = llm(f"Write a short engaging community post (70-100 words) for a finance YouTube channel about: {topic}. "
             f"End with a question to the audience. Add 3 hashtags. No links, no source names.", tokens=250)
-    return clean(t, list(NAMES.values()))
+    return clean(t, list(NAMES.values())) or f"{topic}\n\nBull or Crash? Tell us in the comments.\n\n#finance #investing #stocks"
