@@ -1,11 +1,12 @@
 import os, sys, json
-import brain, studio, rig, fx
+import brain, studio, rig, fx, thumbs
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
-rig.install()  # human-like rigged characters + JPG files into out/
-fx.install()   # podcast-style editing, paper evidence, music/SFX, varied thumbnails
+rig.install()     # human-like rigged characters + JPG files into out/
+fx.install()      # podcast-style editing, paper evidence, music/SFX, varied thumbnails
+thumbs.install()  # thumbnails with real news photos from RSS + characters
 
 
 def load_used():
